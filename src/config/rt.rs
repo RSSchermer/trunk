@@ -7,6 +7,7 @@ use anyhow::{anyhow, Context, Result};
 use axum::http::Uri;
 
 use crate::config::{ConfigOptsBuild, ConfigOptsClean, ConfigOptsHook, ConfigOptsProxy, ConfigOptsServe, ConfigOptsTools, ConfigOptsWatch};
+use http::HeaderMap;
 
 /// Runtime config for the build system.
 #[derive(Clone, Debug)]
@@ -157,6 +158,7 @@ pub struct RtcServe {
     pub proxies: Option<Vec<ConfigOptsProxy>>,
     /// Whether to disable auto-reload of the web page when a build completes.
     pub no_autoreload: bool,
+    pub dist_headers_extra: HeaderMap
 }
 
 impl RtcServe {
@@ -175,6 +177,7 @@ impl RtcServe {
             proxy_ws: opts.proxy_ws,
             proxies,
             no_autoreload: opts.no_autoreload,
+            dist_headers_extra: opts.dist_headers_extra
         })
     }
 }

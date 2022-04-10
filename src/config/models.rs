@@ -7,6 +7,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use axum::http::Uri;
 use clap::Args;
+use http::HeaderMap;
 use serde::{Deserialize, Deserializer};
 
 use crate::common::parse_public_url;
@@ -108,6 +109,9 @@ pub struct ConfigOptsServe {
     #[clap(long = "no-autoreload")]
     #[serde(default)]
     pub no_autoreload: bool,
+    #[clap(skip)]
+    #[serde(default, deserialize_with = "http_serde::header_map::deserialize")]
+    pub dist_headers_extra: HeaderMap,
 }
 
 /// Config options for the serve system.
@@ -295,6 +299,7 @@ impl ConfigOpts {
             proxy_rewrite: cli.proxy_rewrite,
             proxy_ws: cli.proxy_ws,
             no_autoreload: cli.no_autoreload,
+            dist_headers_extra: cli.dist_headers_extra
         };
         let cfg = ConfigOpts {
             build: None,
@@ -441,6 +446,7 @@ impl ConfigOpts {
                 g.address = g.address.or(l.address);
                 g.port = g.port.or(l.port);
                 g.proxy_ws = g.proxy_ws || l.proxy_ws;
+                g.dist_headers_extra = l.dist_headers_extra;
                 // NOTE: this can not be disabled in the cascade.
                 if l.no_autoreload {
                     g.no_autoreload = true;

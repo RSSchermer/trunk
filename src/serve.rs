@@ -19,6 +19,7 @@ use crate::common::SERVER;
 use crate::config::RtcServe;
 use crate::proxy::{ProxyHandlerHttp, ProxyHandlerWebSocket};
 use crate::watch::WatchSystem;
+use http::HeaderMap;
 
 const INDEX_HTML: &str = "index.html";
 
@@ -123,6 +124,7 @@ pub struct State {
     pub build_done_chan: broadcast::Sender<()>,
     /// Whether to disable autoreload
     pub no_autoreload: bool,
+    pub dist_headers_extra: HeaderMap
 }
 
 impl State {
@@ -134,6 +136,7 @@ impl State {
             public_url,
             build_done_chan,
             no_autoreload: cfg.no_autoreload,
+            dist_headers_extra: cfg.dist_headers_extra.clone()
         }
     }
 }
@@ -152,25 +155,34 @@ async fn serve_dist(req: Request<Body>) -> ServerResult<Response<Body>> {
 
     // If the target file was not found, we have an accept header, and that accept header allows
     // for HTML to be returned, then move on to attempt to serve the index.html. Else, respond.
-    match (&res, accept_header_opt) {
-        // If accept does not contain `*/*` or `text/html`, then return.
-        (ResolveResult::NotFound, Some(Ok(accept_header))) if accept_header.contains("*/*") || accept_header.contains("text/html") => (),
-        _ => {
-            return Ok(ResponseBuilder::new()
+    let mut response = match (&res, accept_header_opt) {
+        // If we have a 404 with an accept header allowing HTML (`*/*` or `text/html`), then attempt
+        // to serve the index.
+        (ResolveResult::NotFound, Some(Ok(accept_header))) if accept_header.contains("*/*") || accept_header.contains("text/html") =>  {
+            let res = resolve_path(state.dist_dir.as_path(), INDEX_HTML)
+                .await
+                .context("error serving index.html from dist dir")?;
+            ResponseBuilder::new()
                 .request(&req)
                 .build(res)
-                .context("error serving from dist dir")?);
+                .context("error serving index.html from dist dir")?
+        },
+        _ => {
+            ResponseBuilder::new()
+                .request(&req)
+                .build(res)
+                .context("error serving from dist dir")?
         }
     };
 
-    // At this point, we have a 404 with an accept header allowing HTML, so attempt to serve the index.
-    let res = resolve_path(state.dist_dir.as_path(), INDEX_HTML)
-        .await
-        .context("error serving index.html from dist dir")?;
-    Ok(ResponseBuilder::new()
-        .request(&req)
-        .build(res)
-        .context("error serving index.html from dist dir")?)
+    // Append any additional headers specified in config to the response headers
+    let headers = response.headers_mut();
+
+    for (name, value) in state.dist_headers_extra.iter() {
+        headers.append(name, value.clone());
+    }
+
+    Ok(response)
 }
 
 /// Build the Trunk router, this includes that static file server, the WebSocket server,
